@@ -11,6 +11,10 @@ This set of supplemental materials contains the code and data associated with ou
 ## Software Requirements
 The codes are tested on Windows10 operating systems and python(v. 3.13.0) jupyter notebook.
 
+# Installation Guide
+## Package dependencies
+pip install numpy pandas discretisedfield openpyxl
+
 # Demo
 ## Scripts
 The codes can be runned by python or python jupyter notebook with stated packages.
