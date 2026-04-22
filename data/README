@@ -1,1 +1,2 @@
-Database contains The micromagnetic simulation results of different structural spheres, including the corresponding relationship between their structural characteristics and magnetic permeability
+Database contains The micromagnetic simulation results, including the corresponding relationship between their concavity, porosity elements and  magnetic permeability
+Database-Fe7Co3 contains The micromagnetic simulation results of Fe7Co3 spheres, with different concavity and porosity.
