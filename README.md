@@ -5,7 +5,7 @@ This set of supplemental materials contains the code and data associated with ou
 
 ## Repo Contents
 - [data](./data): summarized data calculated from Micromagnetic simulation
-- [scripts](./scripts): python codes for summarize the overall HT-DFT calculation (HT_DFT_surfE.py) and analyze the relationship between host-guest atomic property and THH preference (machine_learning.py)  机器学习五折运算，活跃磁畴筛选 ，
+- [scripts](./scripts): python codes for summarize the active magnetic domain calculation (Active magnetic domain.py，Screening of active area ratio) and analyze the relationship of concavity, porosity, elements, composition and permeability (machine learning.py)  
 
 # System requirements
 ## Software Requirements
@@ -13,7 +13,10 @@ The codes are tested on Windows10 operating systems and python(v. 3.13.0) jupyte
 
 # Demo
 ## Scripts
-The codes can be runned by python or python jupyter notebook with stated packages
+The codes can be runned by python or python jupyter notebook with stated packages.
 
-`HT_DFT_surfE.py` creates 1) host-guest nanoparticle surface energy plot in Fig S5., 2) surface energy difference heatmap in Fig 1., and 3) preference heatmap in Fig S6.
-`machine_learning.py` is used for feature importance analysis by forest classifier, shap analysis, and gaussian process classifier as shown in Fig 2.
+`Active magnetic domain angle.py` is used to evaluate the energy consumption of magnetic domain rotation angles and to determine the angles of active magnetic domains in Supplementary Fig.3.
+`Screening of active area ratio.py` is used to evaluate the proportion of active magnetic domains under high-frequency magnetic fields in Fig. 1c.
+`machine learning.py` is used to optimize XGBoost models for multiple target variables through Optuna-based hyperparameter search and five-fold cross-validation. It provides 1) the optimal hyperparameter combinations for each target, 2) fold-wise evaluation metrics to assess model robustness and consistency in Supplementary Fig.7, and 3) aggregated prediction performance on both cross-validation and independent test sets in Fig. 2c and Supplementary Figs. 11-13. 
+
+ 
