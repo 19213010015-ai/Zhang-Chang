@@ -4,7 +4,7 @@ Chang Zhang, Longjun Rao, Lishan Wu, Ruixuan Zhang, Jiazhuan Qin, Meichen Wen, K
 This set of supplemental materials contains the code and data associated with our paper titled "Data-driven concavity engineering for magnetic activation in rigid microspheres".
 
 ## Repo Contents
-- [data](./data): summarized data calculated from Micromagnetic simulation
+- [data](./data): summarized data 
 - [scripts](./scripts): python codes for summarize the active magnetic domain calculation (Active magnetic domain.py，Screening of active area ratio) and analyze the relationship of concavity, porosity, elements, composition and permeability (machine learning.py)  
 
 # System requirements
