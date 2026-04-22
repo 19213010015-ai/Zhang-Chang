@@ -1,0 +1,351 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""
+Full pipeline: k-fold cross-validation + multiple ML models + error-bar data
++ reviewer-ready tables + SHAP analysis
+"""
+import os
+import warnings
+warnings.filterwarnings("ignore")
+
+import numpy as np
+import pandas as pd
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# sklearn utilities
+from sklearn.model_selection import train_test_split, KFold, RandomizedSearchCV
+from sklearn.metrics import r2_score, mean_squared_error
+from sklearn.linear_model import LinearRegression
+
+# Tree-based models
+from sklearn.ensemble import RandomForestRegressor
+import xgboost as xgb
+
+# Other models
+from sklearn.neural_network import MLPRegressor
+from sklearn.neighbors import KNeighborsRegressor
+from sklearn.svm import SVR
+from sklearn.gaussian_process import GaussianProcessRegressor
+from sklearn.gaussian_process.kernels import RBF, ConstantKernel
+
+# ========== Universal numeric cleaning: "[x.xE-xx]" string → float ==========
+def clean_numeric(df):
+    """
+    In-place cleaning:
+    - Remove square brackets
+    - Convert to numeric
+    - Invalid entries are set to NaN
+    """
+    for col in df.columns:
+        if df[col].dtype == 'object':
+            df[col] = (
+                df[col].astype(str)
+                .str.strip()                      # remove leading/trailing spaces
+                .str.replace(r'^\[|\]$', '', regex=True)  # remove []
+            )
+        df[col] = pd.to_numeric(df[col], errors='coerce')
+    return df
+
+
+# -------------------- 1. Basic configuration --------------------
+KFOLD = 5                   # 5-fold cross-validation
+TEST_SIZE = 0.2              # Independent test set
+RANDOM_STATE = 42
+N_ITER = 10                  # RandomizedSearchCV iterations
+
+
+def main(TARGET):
+    OUT_DIR = f"{TARGET}_CV_Results"
+    os.makedirs(OUT_DIR, exist_ok=True)
+
+    # -------------------- 2. Load dataset --------------------
+    df = pd.read_excel("FeCo-数据库.xlsx")
+    df = clean_numeric(df)
+
+    X = df[['num', 'R']]
+    y = df[TARGET]
+
+    # Split into training and independent test set
+    X_train_full, X_test, y_train_full, y_test = train_test_split(
+        X, y, test_size=TEST_SIZE, random_state=RANDOM_STATE
+    )
+
+    # -------------------- 3. Define models and hyperparameter spaces --------------------
+    MODELS = {
+        'LinearRegression': {
+            'model': LinearRegression(),
+            'params': {}
+        },
+        'XGBoost': {
+            'model': xgb.XGBRegressor(
+                objective='reg:squarederror',
+                random_state=RANDOM_STATE
+            ),
+            'params': {
+                'n_estimators': [50, 100, 200],
+                'learning_rate': [0.01, 0.1, 0.2],
+                'max_depth': [3, 5, 7],
+                'subsample': [0.8, 1.0]
+            }
+        },
+        'RandomForest': {
+            'model': RandomForestRegressor(random_state=RANDOM_STATE),
+            'params': {
+                'n_estimators': [50, 100, 200],
+                'max_depth': [None, 10, 20],
+                'min_samples_split': [2, 5, 10],
+                'min_samples_leaf': [1, 2, 4]
+            }
+        },
+        'MLP': {
+            'model': MLPRegressor(max_iter=1000, random_state=RANDOM_STATE),
+            'params': {
+                'hidden_layer_sizes': [(50,), (100,), (50, 50)],
+                'activation': ['relu', 'tanh'],
+                'alpha': [0.0001, 0.01]
+            }
+        },
+        'KNN': {
+            'model': KNeighborsRegressor(),
+            'params': {
+                'n_neighbors': [3, 5, 7],
+                'weights': ['uniform', 'distance']
+            }
+        },
+        'SVR': {
+            'model': SVR(),
+            'params': {
+                'kernel': ['rbf', 'linear'],
+                'C': [0.1, 1, 10],
+                'gamma': ['scale', 'auto']
+            }
+        },
+        'GPR': {
+            'model': GaussianProcessRegressor(
+                kernel=ConstantKernel(1.0, (1e-3, 1e3))
+                       * RBF(10, (1e-2, 1e2)),
+                n_restarts_optimizer=10,
+                random_state=RANDOM_STATE
+            ),
+            'params': {}
+        }
+    }
+
+    # -------------------- 4. Training / validation / testing --------------------
+    kfold = KFold(n_splits=KFOLD, shuffle=True, random_state=RANDOM_STATE)
+
+    summary_rows = []   # Mean ± SD summary
+    detail_rows = []    # Per-fold detailed results
+
+    for name, cfg in MODELS.items():
+        print(f"\n>>> {name}")
+        val_r2, val_rmse = [], []
+
+        for fold, (tr_idx, val_idx) in enumerate(kfold.split(X_train_full), 1):
+            X_tr = X_train_full.iloc[tr_idx]
+            y_tr = y_train_full.iloc[tr_idx]
+            X_val = X_train_full.iloc[val_idx]
+            y_val = y_train_full.iloc[val_idx]
+
+            # Hyperparameter search if applicable
+            if cfg['params']:
+                search = RandomizedSearchCV(
+                    cfg['model'],
+                    cfg['params'],
+                    n_iter=N_ITER,
+                    cv=3,
+                    scoring='r2',
+                    n_jobs=-1,
+                    random_state=RANDOM_STATE
+                )
+                search.fit(X_tr, y_tr)
+                best = search.best_estimator_
+            else:
+                best = cfg['model'].fit(X_tr, y_tr)
+
+            # Validation performance
+            pred_val = best.predict(X_val)
+            val_r2.append(r2_score(y_val, pred_val))
+            val_rmse.append(np.sqrt(mean_squared_error(y_val, pred_val)))
+
+            detail_rows.append({
+                'Model': name,
+                'Fold': fold,
+                'Val_R2': val_r2[-1],
+                'Val_RMSE': val_rmse[-1]
+            })
+
+        # Final model trained on full training set
+        if cfg['params']:
+            final_search = RandomizedSearchCV(
+                cfg['model'],
+                cfg['params'],
+                n_iter=N_ITER,
+                cv=3,
+                scoring='r2',
+                n_jobs=-1,
+                random_state=RANDOM_STATE
+            )
+            final_search.fit(X_train_full, y_train_full)
+            final_model = final_search.best_estimator_
+        else:
+            final_model = cfg['model'].fit(X_train_full, y_train_full)
+
+        test_pred = final_model.predict(X_test)
+        test_r2 = r2_score(y_test, test_pred)
+        test_rmse = np.sqrt(mean_squared_error(y_test, test_pred))
+
+        # Save test set predictions
+        pd.DataFrame({
+            'Observed': y_test,
+            'Predicted': test_pred
+        }).to_excel(
+            os.path.join(OUT_DIR, f'{name}_TestSet_Prediction.xlsx'),
+            index=False
+        )
+
+        # Summary statistics
+        summary_rows.append({
+            'Model': name,
+            'Val_R2_mean': np.mean(val_r2),
+            'Val_R2_std': np.std(val_r2, ddof=1),
+            'Val_RMSE_mean': np.mean(val_rmse),
+            'Val_RMSE_std': np.std(val_rmse, ddof=1),
+            'Test_R2': test_r2,
+            'Test_RMSE': test_rmse
+        })
+
+    # -------------------- 5. Export Excel files --------------------
+    summary_df = pd.DataFrame(summary_rows)
+    detail_df = pd.DataFrame(detail_rows)
+
+    summary_df.to_excel(os.path.join(OUT_DIR, 'Model_Performance_Summary.xlsx'), index=False)
+    detail_df.to_excel(os.path.join(OUT_DIR, 'Foldwise_Detailed_Results.xlsx'), index=False)
+
+    # Reviewer-ready comparison table
+    reviewer_df = summary_df[['Model', 'Val_R2_mean', 'Val_R2_std', 'Test_R2']].copy()
+    reviewer_df['Val_R2_Mean±SD'] = reviewer_df.apply(
+        lambda x: f"{x['Val_R2_mean']:.3f}±{x['Val_R2_std']:.3f}", axis=1
+    )
+    reviewer_df = reviewer_df[['Model', 'Val_R2_Mean±SD', 'Test_R2']]
+    reviewer_df.to_excel(
+        os.path.join(OUT_DIR, 'Reviewer_Required_Performance_Table.xlsx'),
+        index=False
+    )
+
+    # -------------------- 6. Export error-bar data (no plotting) --------------------
+    error_bar_df = pd.DataFrame({
+        'Model': summary_df['Model'],
+        'Metric': ['R²'] * len(summary_df),
+        'Mean': summary_df['Val_R2_mean'],
+        'SD': summary_df['Val_R2_std'],
+        'Mean±SD': summary_df.apply(
+            lambda x: f"{x['Val_R2_mean']:.3f}±{x['Val_R2_std']:.3f}", axis=1
+        )
+    })
+
+    rmse_bar_df = pd.DataFrame({
+        'Model': summary_df['Model'],
+        'Metric': ['RMSE'] * len(summary_df),
+        'Mean': summary_df['Val_RMSE_mean'],
+        'SD': summary_df['Val_RMSE_std'],
+        'Mean±SD': summary_df.apply(
+            lambda x: f"{x['Val_RMSE_mean']:.3f}±{x['Val_RMSE_std']:.3f}", axis=1
+        )
+    })
+
+    error_bar_all = pd.concat([error_bar_df, rmse_bar_df], ignore_index=True)
+
+    error_bar_all.to_excel(
+        os.path.join(OUT_DIR, 'CrossValidation_ErrorBar_Data.xlsx'),
+        index=False
+    )
+    error_bar_all.to_csv(
+        os.path.join(OUT_DIR, 'CrossValidation_ErrorBar_Data.csv'),
+        index=False
+    )
+
+    # -------------------- 7. Error-bar plotting instructions --------------------
+    how_to_plot = (
+        "Error-bar plotting instructions:\n"
+        "1) Software: Origin / GraphPad Prism / Python Matplotlib\n"
+        "2) Data source: 'CrossValidation_ErrorBar_Data.xlsx', column 'Mean±SD'\n"
+        "3) Chart type: Bar/Column chart with error bars = mean ± SD\n"
+        "4) Python example:\n"
+        "   import pandas as pd, matplotlib.pyplot as plt\n"
+        "   df = pd.read_excel('CrossValidation_ErrorBar_Data.xlsx')\n"
+        "   r2_df = df[df['Metric']=='R²']\n"
+        "   plt.bar(r2_df['Model'], r2_df['Mean'], yerr=r2_df['SD'], capsize=5)\n"
+        "   plt.ylabel('R²'); plt.show()"
+    )
+
+    with open(os.path.join(OUT_DIR, 'How_to_Plot_ErrorBars.txt'), 'w', encoding='utf-8') as f:
+        f.write(how_to_plot)
+
+    print('\n>>> Error-bar data exported.')
+    print('>>> Plotting instructions saved.')
+
+    # ===================== 8. SHAP analysis (XGBoost only) =====================
+    import shap
+
+    print('\n>>> Computing SHAP values (XGBoost)...')
+
+    X_train_full = clean_numeric(X_train_full.copy())
+    X_test = clean_numeric(X_test.copy())
+
+    xgb_final = xgb.XGBRegressor(
+        objective='reg:squarederror',
+        random_state=RANDOM_STATE,
+        n_estimators=100,
+        learning_rate=0.1,
+        max_depth=5,
+        subsample=0.8
+    )
+    xgb_final.fit(X_train_full, y_train_full)
+
+    explainer = shap.TreeExplainer(xgb_final)
+    shap_values = explainer.shap_values(X_test)
+
+    feature_names = X_test.columns
+    shap_df = pd.DataFrame(shap_values, columns=feature_names)
+
+    shap_summary = (
+        pd.DataFrame({
+            'Feature': feature_names,
+            'SHAP_mean': shap_df.mean(),
+            'SHAP_abs_mean': shap_df.abs().mean(),
+            'SHAP_std': shap_df.std()
+        })
+        .sort_values('SHAP_abs_mean', ascending=False)
+        .reset_index(drop=True)
+    )
+
+    shap_summary.to_excel(
+        os.path.join(OUT_DIR, 'XGBoost_SHAP_Summary.xlsx'),
+        index=False
+    )
+    shap_df.to_excel(
+        os.path.join(OUT_DIR, 'XGBoost_SHAP_Values_PerSample.xlsx'),
+        index=False
+    )
+
+    print('>>> SHAP results exported.')
+
+
+# -------------------- Batch execution --------------------
+col_names = [
+    'S_peak', 'S_min',
+    'C1_peak', 'C1_min',
+    'C2_peak', 'C2_min',
+    'C3_peak', 'C3_min',
+    'C4_peak', 'C4_min',
+]
+
+for name in col_names:
+    try:
+        main(name)
+    except:
+        continue
