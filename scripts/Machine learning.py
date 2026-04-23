@@ -97,10 +97,10 @@ def run_one_target(target):
     out_dir = f"{target}_CV_Results"
     os.makedirs(out_dir, exist_ok=True)
 
-    df = pd.read_excel("原始数据.xlsx")
+    df = pd.read_excel("Database.xlsx")
     df = clean_numeric(df)
 
-    X = df[['Fe', 'Co', 'Concaviy', 'Poosiy']]
+    X = df[['Fe', 'Co', 'Concavity', 'Porosity']]
     y = df[target]
 
     X_train_full, X_test, y_train_full, y_test = train_test_split(
