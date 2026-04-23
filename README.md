@@ -18,7 +18,6 @@ pip install numpy pandas discretisedfield openpyxl matplotlib seaborn scikit-lea
 # Demo
 ## Scripts
 The codes can be runned by python or python jupyter notebook with stated packages.
-`Active magnetic domain angle.py` is used to evaluate the energy consumption of magnetic domain rotation angles and to determine the angles of active magnetic domains in Supplementary Fig.3.
 `Screening of active area ratio.py` is used to evaluate the proportion of active magnetic domains under high-frequency magnetic fields in Fig. 1c.
 `machine learning.py` is used to optimize XGBoost models on the `Database.xlsx` through Optuna-based hyperparameter search and five-fold cross-validation. It provides 1) the optimal hyperparameter combinations for each target, 2) fold-wise evaluation metrics to assess model robustness and consistency in Supplementary Fig.7, and 3) aggregated prediction performance on both cross-validation and independent test sets in Fig. 2c and Supplementary Figs. 11-13. 
 `ML-Fe7Co3.py`is used to train machine-learning models on the `Database-Fe7Co3.xlsx` after removing elemental-composition features. It provides 1) optimized XGBoost models for multiple target variables, 2) fold-wise validation results to evaluate model robustness and consistency, and 3) overall predictive performance on both cross-validation and independent test sets in Supplementary Figs. 10
