@@ -5,7 +5,7 @@ This set of supplemental materials contains the code and data associated with ou
 
 ## Repo Contents
 - [data](./data): summarized machine learning database 
-- [scripts](./scripts): python codes for summarize the active magnetic domain calculation (Active magnetic domain.py，Screening of active area ratio) and analyze the relationship of concavity, porosity, elements, composition and permeability (machine learning.py)  
+- [scripts](./scripts): python codes for summarize the active magnetic domain calculation (Screening of active area ratio.py) and analyze the relationship of concavity, porosity, elements, composition and permeability (machine learning.py)  
 
 # System requirements
 ## Software Requirements
