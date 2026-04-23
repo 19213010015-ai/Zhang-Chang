@@ -2,10 +2,8 @@
 # -*- coding: utf-8 -*-
 """
 Full version: k-fold cross-validation + linear regression + error-bar data
-+ reviewer-ready table + plotting instructions
-Special data generator for reviewer comment #3
-
-Before running, make sure that "Database-Fe7Co3.xlsx" is located in the same directory.
++ reviewer-ready table + plotting
+Before running, make sure that "Database-Fe7Co3.xlsx" is in the same directory.
 """
 import os
 import warnings
@@ -18,16 +16,11 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-# sklearn
 from sklearn.model_selection import train_test_split, KFold, RandomizedSearchCV
 from sklearn.metrics import r2_score, mean_squared_error
 from sklearn.linear_model import LinearRegression
-
-# Tree-based models
 from sklearn.ensemble import RandomForestRegressor
 import xgboost as xgb
-
-# Other models
 from sklearn.neural_network import MLPRegressor
 from sklearn.neighbors import KNeighborsRegressor
 from sklearn.svm import SVR
@@ -35,44 +28,40 @@ from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF, ConstantKernel
 
 
-# ========== Universal cleaning: convert "[x.xE-xx]" strings to float ==========
 def clean_numeric(df):
-    """Clean data in place: remove square brackets and convert to numeric; invalid values become NaN."""
+    """Clean in place: remove square brackets and convert to numeric."""
     for col in df.columns:
         if df[col].dtype == 'object':
             df[col] = (
                 df[col].astype(str)
-                .str.strip()   # remove leading and trailing spaces
-                .str.replace(r'^\[|\]$', '', regex=True)  # remove square brackets
+                .str.strip()
+                .str.replace(r'^\[|\]$', '', regex=True)
             )
         df[col] = pd.to_numeric(df[col], errors='coerce')
     return df
 
 
-# -------------------- 1. Basic configuration --------------------
 KFOLD = 5
 TEST_SIZE = 0.2
 RANDOM_STATE = 42
-N_ITER = 10
+N_ITER = 3   # reduced from 10 to improve stability and speed
 
 
 def main(TARGET):
     OUT_DIR = f"{TARGET}_CV_Results"
     os.makedirs(OUT_DIR, exist_ok=True)
 
-    # -------------------- 2. Load data --------------------
     df = pd.read_excel("Database-Fe7Co3.xlsx")
     df = clean_numeric(df)
 
+    # Modify this line to match your actual dataset columns if needed
     X = df[['Concavity', 'Porosity']]
     y = df[TARGET]
 
-    # Split off an independent test set
     X_train_full, X_test, y_train_full, y_test = train_test_split(
         X, y, test_size=TEST_SIZE, random_state=RANDOM_STATE
     )
 
-    # -------------------- 3. Define models and hyperparameter spaces --------------------
     MODELS = {
         'LinearRegression': {
             'model': LinearRegression(),
@@ -81,7 +70,8 @@ def main(TARGET):
         'XGBoost': {
             'model': xgb.XGBRegressor(
                 objective='reg:squarederror',
-                random_state=RANDOM_STATE
+                random_state=RANDOM_STATE,
+                n_jobs=1
             ),
             'params': {
                 'n_estimators': [50, 100, 200],
@@ -132,7 +122,6 @@ def main(TARGET):
         }
     }
 
-    # -------------------- 4. Training / validation / testing --------------------
     kfold = KFold(n_splits=KFOLD, shuffle=True, random_state=RANDOM_STATE)
 
     summary_rows = []
@@ -143,12 +132,12 @@ def main(TARGET):
         val_r2, val_rmse = [], []
 
         for fold, (tr_idx, val_idx) in enumerate(kfold.split(X_train_full), 1):
+            print(f"    Fold {fold}/{KFOLD}")
             X_tr = X_train_full.iloc[tr_idx]
             y_tr = y_train_full.iloc[tr_idx]
             X_val = X_train_full.iloc[val_idx]
             y_val = y_train_full.iloc[val_idx]
 
-            # Hyperparameter search
             if cfg['params']:
                 search = RandomizedSearchCV(
                     cfg['model'],
@@ -156,7 +145,7 @@ def main(TARGET):
                     n_iter=N_ITER,
                     cv=3,
                     scoring='r2',
-                    n_jobs=-1,
+                    n_jobs=1,
                     random_state=RANDOM_STATE
                 )
                 search.fit(X_tr, y_tr)
@@ -164,7 +153,6 @@ def main(TARGET):
             else:
                 best = cfg['model'].fit(X_tr, y_tr)
 
-            # Validation performance
             pred_val = best.predict(X_val)
             val_r2.append(r2_score(y_val, pred_val))
             val_rmse.append(np.sqrt(mean_squared_error(y_val, pred_val)))
@@ -176,15 +164,15 @@ def main(TARGET):
                 'Validation_RMSE': val_rmse[-1]
             })
 
-        # Final model trained on the full training set
         if cfg['params']:
+            print(f"    Final search for {name}")
             final_search = RandomizedSearchCV(
                 cfg['model'],
                 cfg['params'],
                 n_iter=N_ITER,
                 cv=3,
                 scoring='r2',
-                n_jobs=-1,
+                n_jobs=1,
                 random_state=RANDOM_STATE
             )
             final_search.fit(X_train_full, y_train_full)
@@ -196,7 +184,6 @@ def main(TARGET):
         test_r2 = r2_score(y_test, test_pred)
         test_rmse = np.sqrt(mean_squared_error(y_test, test_pred))
 
-        # Save test-set predictions
         pd.DataFrame({
             'Observed': y_test,
             'Predicted': test_pred
@@ -205,7 +192,6 @@ def main(TARGET):
             index=False
         )
 
-        # Summary statistics
         summary_rows.append({
             'Model': name,
             'Validation_R2_mean': np.mean(val_r2),
@@ -216,14 +202,12 @@ def main(TARGET):
             'Test_RMSE': test_rmse
         })
 
-    # -------------------- 5. Export Excel files --------------------
     summary_df = pd.DataFrame(summary_rows)
     detail_df = pd.DataFrame(detail_rows)
 
     summary_df.to_excel(os.path.join(OUT_DIR, 'Model_Performance_Summary.xlsx'), index=False)
     detail_df.to_excel(os.path.join(OUT_DIR, 'Foldwise_Detailed_Results.xlsx'), index=False)
 
-    # Reviewer-ready comparison table
     reviewer_df = summary_df[['Model', 'Validation_R2_mean', 'Validation_R2_std', 'Test_R2']].copy()
     reviewer_df['Validation_R2_Mean±SD'] = reviewer_df.apply(
         lambda x: f"{x['Validation_R2_mean']:.3f}±{x['Validation_R2_std']:.3f}", axis=1
@@ -234,7 +218,6 @@ def main(TARGET):
         index=False
     )
 
-    # -------------------- 6. Export error-bar data (without plotting) --------------------
     error_bar_df = pd.DataFrame({
         'Model': summary_df['Model'],
         'Metric': ['R²'] * len(summary_df),
@@ -256,12 +239,10 @@ def main(TARGET):
     })
 
     error_bar_all = pd.concat([error_bar_df, rmse_bar_df], ignore_index=True)
-
     error_bar_file = os.path.join(OUT_DIR, 'CrossValidation_ErrorBar_Data.xlsx')
     error_bar_all.to_excel(error_bar_file, index=False)
     error_bar_all.to_csv(os.path.join(OUT_DIR, 'CrossValidation_ErrorBar_Data.csv'), index=False)
 
-    # -------------------- 7. Plotting instructions --------------------
     how_to_plot = (
         "Error-bar plotting instructions:\n"
         "1) Software: Origin / GraphPad Prism / Python Matplotlib\n"
@@ -278,34 +259,29 @@ def main(TARGET):
     with open(os.path.join(OUT_DIR, 'How_to_Plot_Error_Bars.txt'), 'w', encoding='utf-8') as f:
         f.write(how_to_plot)
 
-    print('\n>>> Error-bar data have been exported to:', error_bar_file)
+    print('\n>>> Error-bar data exported to:', error_bar_file)
     print('>>> Plotting instructions saved to:', os.path.join(OUT_DIR, 'How_to_Plot_Error_Bars.txt'))
 
-    # ===================== 8. SHAP analysis (export data only + plotting guidance) =====================
     import shap
-
     print('\n>>> Computing SHAP values (XGBoost)...')
 
-    # Clean once more before final training
     X_train_full = clean_numeric(X_train_full.copy())
     X_test = clean_numeric(X_test.copy())
 
-    # Final XGBoost model
     xgb_final = xgb.XGBRegressor(
         objective='reg:squarederror',
         random_state=RANDOM_STATE,
         n_estimators=100,
         learning_rate=0.1,
         max_depth=5,
-        subsample=0.8
+        subsample=0.8,
+        n_jobs=1
     )
     xgb_final.fit(X_train_full, y_train_full)
 
-    # SHAP
     explainer = shap.TreeExplainer(xgb_final)
     shap_values = explainer.shap_values(X_test)
 
-    # Organize outputs
     feature_names = X_test.columns
     shap_df = pd.DataFrame(shap_values, columns=feature_names)
 
@@ -315,16 +291,14 @@ def main(TARGET):
             'SHAP_mean': shap_df.mean(),
             'SHAP_abs_mean': shap_df.abs().mean(),
             'SHAP_std': shap_df.std()
-        })
-        .sort_values('SHAP_abs_mean', ascending=False)
-        .reset_index(drop=True)
+        }).sort_values('SHAP_abs_mean', ascending=False).reset_index(drop=True)
     )
 
-    shap_summary_file = os.path.join(OUT_DIR, 'XGBoost_SHAP_Summary.xlsx')
+    shap_summary_file = os.path.join(OUT_DIR, 'XGBoost_SHAP_summary.xlsx')
     shap_summary.to_excel(shap_summary_file, index=False)
-    shap_df.to_excel(os.path.join(OUT_DIR, 'XGBoost_SHAP_Values_Per_Sample.xlsx'), index=False)
+    shap_df.to_excel(os.path.join(OUT_DIR, 'XGBoost_SHAP_values_per_sample.xlsx'), index=False)
 
-    print('>>> SHAP data have been exported to:', shap_summary_file)
+    print('>>> SHAP data exported to:', shap_summary_file)
 
 
 col_names = [
