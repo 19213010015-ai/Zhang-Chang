@@ -62,10 +62,10 @@ def main(TARGET):
     os.makedirs(OUT_DIR, exist_ok=True)
 
     # -------------------- 2. Load dataset --------------------
-    df = pd.read_excel("FeCo-数据库.xlsx")
+    df = pd.read_excel("Database-Fe7Co3.xlsx")
     df = clean_numeric(df)
 
-    X = df[['num', 'R']]
+    X = df[['Concavity', 'Porosity']]
     y = df[TARGET]
 
     # Split into training and independent test set
