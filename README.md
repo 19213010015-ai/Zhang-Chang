@@ -13,7 +13,7 @@ The codes are tested on Windows10 operating systems and python(v. 3.13.0) jupyte
 
 # Installation Guide
 ## Package dependencies
-pip install numpy pandas discretisedfield openpyxl matplotlib seaborn scikit-learn xgboost shap
+pip install numpy pandas discretisedfield openpyxl matplotlib seaborn scikit-learn xgboost shap optuna
 
 # Demo
 ## Scripts
